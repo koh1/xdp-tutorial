@@ -28,26 +28,22 @@ struct bpf_map_def SEC("maps") redirect_params = {
 	.value_size = ETH_ALEN,
 	.max_entries = 1,
 };
-static __always_inline void swap_src_dst_mac(struct ethhdr *eth)
-{
+static __always_inline void swap_src_dst_mac(struct ethhdr *eth) {
 	/* Assignment 1: swap source and destination addresses in the eth.
 	 * For simplicity you can use the memcpy macro defined above */
 }
 
-static __always_inline void swap_src_dst_ipv6(struct ipv6hdr *ipv6)
-{
+static __always_inline void swap_src_dst_ipv6(struct ipv6hdr *ipv6) {
 	/* Assignment 1: swap source and destination addresses in the iphv6dr */
 }
 
-static __always_inline void swap_src_dst_ipv4(struct iphdr *iphdr)
-{
+static __always_inline void swap_src_dst_ipv4(struct iphdr *iphdr) {
 	/* Assignment 1: swap source and destination addresses in the iphdr */
 }
 
 /* Implement packet03/assignment-1 in this section */
 SEC("xdp_icmp_echo")
-int xdp_icmp_echo_func(struct xdp_md *ctx)
-{
+int xdp_icmp_echo_func(struct xdp_md *ctx) {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
 	struct hdr_cursor nh;
@@ -140,8 +136,7 @@ out:
 
 /* Assignment 3: nothing to do here, patch the xdp_prog_user.c program */
 SEC("xdp_redirect_map")
-int xdp_redirect_map_func(struct xdp_md *ctx)
-{
+int xdp_redirect_map_func(struct xdp_md *ctx) {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
 	struct hdr_cursor nh;
@@ -172,16 +167,14 @@ out:
 }
 
 /* from include/net/ip.h */
-static __always_inline int ip_decrease_ttl(struct iphdr *iph)
-{
+static __always_inline int ip_decrease_ttl(struct iphdr *iph) {
 	/* Assignment 4: see samples/bpf/xdp_fwd_kern.c from the kernel */
 	return --iph->ttl;
 }
 
 /* Assignment 4: Complete this router program */
 SEC("xdp_router")
-int xdp_router_func(struct xdp_md *ctx)
-{
+int xdp_router_func(struct xdp_md *ctx) {
 	void *data_end = (void *)(long)ctx->data_end;
 	void *data = (void *)(long)ctx->data;
 	struct bpf_fib_lookup fib_params = {};

@@ -5,6 +5,7 @@
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <linux/ipv6.h>
+#include <linux/ip.h>
 #include <linux/icmpv6.h>
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
@@ -36,8 +37,10 @@ static __always_inline int parse_ethhdr(struct hdr_cursor *nh,
 	/* Byte-count bounds check; check if current pointer + size of header
 	 * is after data_end.
 	 */
-	if (nh->pos + 1 > data_end)
-		return -1;
+	//if (nh->pos + 1 > data_end)
+	//	return -1;
+	if (nh->pos + hdrsize > data_end)
+	    return -1;
 
 	nh->pos += hdrsize;
 	*ethhdr = eth;
@@ -70,11 +73,13 @@ int  xdp_parser_func(struct xdp_md *ctx)
 	 * we don't want to deal with, we just pass up the stack and let the
 	 * kernel deal with it.
 	 */
-	__u32 action = XDP_PASS; /* Default action */
+	__u32 action = XDP_DROP; /* Default action */
 
         /* These keep track of the next header type and iterator pointer */
 	struct hdr_cursor nh;
 	int nh_type;
+	unsigned long nh_off = sizeof(*eth);
+	unsigned int protocol;
 
 	/* Start next header cursor position at data start */
 	nh.pos = data;
@@ -84,12 +89,26 @@ int  xdp_parser_func(struct xdp_md *ctx)
 	 * header type in the packet correct?), and bounds checking.
 	 */
 	nh_type = parse_ethhdr(&nh, data_end, &eth);
-	if (nh_type != bpf_htons(ETH_P_IPV6))
+	if (nh_type != bpf_htons(ETH_P_IPV6)) {
 		goto out;
-
+	} else if (nh_type == bpf_htons(ETH_P_IP)) {
+	  struct iphdr *iph = data + nh_off;
+	  protocol = iph->protocol;
+	  action = XDP_PASS;
+	  if (protocol == 1) {
+	    char msg[] = "icmp\n";
+	    bpf_trace_printk(msg, sizeof(msg));	  
+	  } else if (protocol == 6) {
+	    char msg[] = "tcp\n";
+	    bpf_trace_printk(msg, sizeof(msg));	  
+	  } else if (protocol == 17) {
+	    char msg[] = "udp\n";
+	    bpf_trace_printk(msg, sizeof(msg));	  
+	  }
+	  goto out;
+	}
 	/* Assignment additions go below here */
 
-	action = XDP_DROP;
 out:
 	return xdp_stats_record_action(ctx, action); /* read via xdp_stats */
 }
