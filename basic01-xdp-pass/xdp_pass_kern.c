@@ -18,56 +18,64 @@
 
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
+#include <bpf/bpf.h>
+
+struct flow_key {
+    __u32 sip;
+    __u32 dip;
+    __u32 spt;
+    __u32 dpt;
+};
+
+int bpf_map = bpf_create_map(BPF_MAP_TYPE_HASH, sizeof(struct flow_key), sizeof(__u64), 256, 0);
 
 SEC("prog")
 int xdp_prog_simple(struct xdp_md *xdp) {
-    char fmt[] = "xdp_prog_simple starts.\n";
-    bpf_trace_printk(fmt, sizeof(fmt));
     void *data = (void *)(long)xdp->data;
     void *data_end = (void *)(long)xdp->data_end;
+
     struct ethhdr *eth = data;
-    /*
-    char fmt2[] = "%u\n";
-    bpf_trace_printk(fmt2, sizeof(fmt2), eth->h_source);
-    bpf_trace_printk(fmt2, sizeof(fmt2), eth->h_dest);
-
-    __u8 dst_mac[ETH_ALEN];
-    __u8 src_mac[ETH_ALEN];
-    bpf_memcpy(src_mac, eth->h_source, ETH_ALEN);
-    bpf_memcpy(dst_mac, eth->h_dest, ETH_ALEN);
-
-
-    bpf_trace_printk(fmt2, sizeof(fmt2), eth->h_source);
-    bpf_trace_printk(fmt2, sizeof(fmt2), eth->h_dest);
-
-    */
-    unsigned long nh_off = sizeof(*eth);
-    unsigned int  protocol;
-    //  unsigned int  value = 0, *vp;
-
-    if (data + nh_off > data_end) {
+    if (data + sizeof(struct ethhdr) > data_end) {
         return XDP_PASS;
     }
-    if (eth->h_proto == bpf_htons(ETH_P_IP)) {
-        struct iphdr *iph = data + nh_off;
-        if ((void*)&iph[1] > data_end) {
+    __u16 eth_payload_proto = eth->h_proto;
+    if (eth_payload_proto != bpf_htons(ETH_P_IP)) {
+        return XDP_PASS;
+    }
+    struct iphdr *iph = data + sizeof(*eth);
+    if (data + sizeof(struct ethhdr) + sizeof(struct iphdr) > data_end) {
+        return XDP_PASS;
+    }
+
+    __u16 ip_payload_proto = iph->protocol;
+    if (ip_payload_proto == IPPROTO_ICMP) {
+        char msg[] = "icmp protocol will be dropped\n";
+        bpf_trace_printk(msg, sizeof(msg));
+        char fmt3[] = "%u\n";
+        bpf_trace_printk(fmt3, sizeof(fmt3), iph->saddr);
+        bpf_trace_printk(fmt3, sizeof(fmt3), iph->daddr);
+        return XDP_DROP;
+    } else if (ip_payload_proto == IPPROTO_TCP) {
+        struct tcphdr *tcph = data + sizeof(*eth) + sizeof(*iph);
+        if (data + sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct tcphdr) > data_end) {
             return XDP_PASS;
         }
-        protocol = iph->protocol;
-        if (protocol == 1) {
-            char msg[] = "icmp protocol will be dropped\n";
+        if (tcph->ack == 1) {
+            unsigned short win = tcph->window;
+            char fmt[] = "window size: %u\n";
+            bpf_trace_printk(fmt, sizeof(fmt), win);
+            /*
+            __be16 win = tcph->window;
+            tcph->window = bpf_htons(1000);
+            __sum16 sum = (tcph->check) + 1000 + ((~win & 0xffff) + 1);
+            tcph->check = sum;
+            char msg[] = "TCP ACK\n";
             bpf_trace_printk(msg, sizeof(msg));
-            char fmt3[] = "%u\n";
-            bpf_trace_printk(fmt3, sizeof(fmt3), iph->saddr);
-            bpf_trace_printk(fmt3, sizeof(fmt3), iph->daddr);
-            return XDP_DROP;
-        } else if (protocol == 6) {
-            char msg[] = "tcp\n";
-            bpf_trace_printk(msg, sizeof(msg));
-        } else if (protocol == 17) {
-            char msg[] = "udp\n";
-            bpf_trace_printk(msg, sizeof(msg));
+            */
         }
+    } else if (ip_payload_proto == IPPROTO_UDP) {
+        char msg[] = "udp\n";
+        bpf_trace_printk(msg, sizeof(msg));
     }
     return XDP_PASS;
 }
